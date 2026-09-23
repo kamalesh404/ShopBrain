@@ -1,6 +1,6 @@
 import httpx
 from fastapi import APIRouter, Header, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app import db
 from app.auth import PLANS, resolve_workspace
@@ -13,8 +13,8 @@ router = APIRouter()
 
 class ChatIn(BaseModel):
     workspace: str = "demo"
-    message: str
-    top_k: int = 4
+    message: str = Field(min_length=1, max_length=4000)
+    top_k: int = Field(default=4, ge=1, le=20)
 
 
 async def _llm_answer(message: str, context: list[dict]) -> tuple[str, int]:

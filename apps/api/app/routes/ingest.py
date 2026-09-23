@@ -1,7 +1,7 @@
 import httpx
 from bs4 import BeautifulSoup
 from fastapi import APIRouter, Header, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app import db
 from app.auth import PLANS, resolve_workspace
@@ -13,7 +13,7 @@ router = APIRouter()
 
 class TextIn(BaseModel):
     workspace: str = "demo"
-    text: str
+    text: str = Field(min_length=1, max_length=20000)
     source: str = "pasted-text"
 
 
@@ -47,6 +47,8 @@ def ingest_text(body: TextIn, x_api_key: str | None = Header(default=None, alias
 @router.post("/ingest/url")
 def ingest_url(body: UrlIn, x_api_key: str | None = Header(default=None, alias="X-API-Key")):
     ws, plan = resolve_workspace(body.workspace, x_api_key)
+    if not body.url.startswith(("http://", "https://")):
+        raise HTTPException(status_code=400, detail="url must start with http:// or https://")
     try:
         r = httpx.get(body.url, timeout=20, follow_redirects=True)
         r.raise_for_status()
@@ -54,8 +56,10 @@ def ingest_url(body: UrlIn, x_api_key: str | None = Header(default=None, alias="
         for tag in soup(["script", "style", "nav", "footer"]):
             tag.decompose()
         text = soup.get_text(separator="\n", strip=True)[:20000]
+    except HTTPException:
+        raise
     except Exception as e:
-        return {"error": f"fetch failed: {e}"}
+        raise HTTPException(status_code=502, detail=f"fetch failed: {e}")
     chunks = _embed(chunk_text(text, body.url))
     _guard(ws, plan, len(chunks))
     n = db.add_docs(ws, chunks)

@@ -64,3 +64,36 @@ def test_quota_enforced():
         db.log_message(ws, 1)
     r = client.post("/v1/chat", json={"workspace": ws, "message": "hi"})
     assert r.status_code == 402
+
+
+def test_chat_rejects_empty_message():
+    r = client.post("/v1/chat", json={"workspace": "e2e-demo", "message": ""})
+    assert r.status_code == 422
+
+
+def test_chat_rejects_out_of_range_top_k():
+    r = client.post("/v1/chat", json={"workspace": "e2e-demo", "message": "hi", "top_k": 0})
+    assert r.status_code == 422
+    r = client.post("/v1/chat", json={"workspace": "e2e-demo", "message": "hi", "top_k": 99})
+    assert r.status_code == 422
+
+
+def test_ingest_rejects_empty_text():
+    r = client.post("/v1/ingest/text", json={"workspace": "e2e-demo", "text": ""})
+    assert r.status_code == 422
+
+
+def test_ingest_url_rejects_non_http():
+    r = client.post("/v1/ingest/url", json={"workspace": "e2e-demo", "url": "ftp://example.com/x"})
+    assert r.status_code == 400
+
+
+def test_ingest_url_fetch_failure_is_502(monkeypatch):
+    import httpx as httpx_mod
+
+    def _boom(*args, **kwargs):
+        raise httpx_mod.ConnectError("nope")
+
+    monkeypatch.setattr(httpx_mod, "get", _boom)
+    r = client.post("/v1/ingest/url", json={"workspace": "e2e-demo", "url": "https://example.com/"})
+    assert r.status_code == 502
